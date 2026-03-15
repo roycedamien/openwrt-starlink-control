@@ -23,6 +23,12 @@ Auto-refreshes every 10 seconds.
 Note: The alignment data provided is direct from the dish API and after confirming with star-link support is more accurate than the phone app that incorrectly reports over 6 degrees misalignment and should be ignored if the dish reports its aligned.
 ---
 
+## Related
+
+This package is designed to work alongside [starlink-openwrt-ipv6-optimized](https://github.com/bigmalloy/starlink-openwrt-ipv6-optimized) — a companion guide and configuration reference for setting up OpenWrt as a Starlink bypass router, covering IPv6, odhcpd prefix lifetime fixes, firewall, congestion control, and more.
+
+---
+
 ## Requirements
 
 | Requirement | Notes |
