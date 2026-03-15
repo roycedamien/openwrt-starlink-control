@@ -94,6 +94,14 @@ The build uses the official `openwrt/sdk:aarch64_cortex-a53-25.12.0-rc5` Docker 
 
 ---
 
+## Buy me a beer
+
+If this project saved you some time, feel free to shout me a beer!
+
+[![PayPal](https://img.shields.io/badge/PayPal-Buy%20me%20a%20beer-blue?logo=paypal)](https://paypal.me/bergfirmware)
+
+---
+
 ## License
 
 MIT
