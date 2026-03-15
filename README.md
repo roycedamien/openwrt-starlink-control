@@ -1,6 +1,7 @@
 # luci-app-starlink
 
 LuCI dashboard for Starlink dish telemetry, alignment, alerts, IPv6 connectivity, traffic, and router configuration on OpenWrt 25.x.
+Works with Starlink Gen3 and higher dish
 
 ![Starlink Dashboard](docs/screenshot.png)
 
