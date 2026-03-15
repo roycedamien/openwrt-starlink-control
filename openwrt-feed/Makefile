@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-starlink
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_MAINTAINER:=bigmalloy
 PKG_LICENSE:=MIT
@@ -44,6 +44,12 @@ define Package/luci-app-starlink/install
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/view/starlink
 	$(INSTALL_DATA) ./files/status.js \
 		$(1)/www/luci-static/resources/view/starlink/status.js
+endef
+
+define Package/luci-app-starlink/preinst
+#!/bin/sh
+mkdir -p /www/luci-static/resources/view/starlink
+exit 0
 endef
 
 define Package/luci-app-starlink/postinst

@@ -448,6 +448,23 @@ CDG is not compiled into the mediatek/filogic kernel on OpenWrt 25.12.0.
 Install hybla: `apk add kmod-tcp-hybla`. Use the auto-detection pattern (check
 `/proc/sys/net/ipv4/tcp_available_congestion_control`) rather than hardcoding.
 
+### APK install fails: "No such file or directory" for view/starlink/status.js
+
+Caused by a stale overlayfs negative dcache entry after the `starlink/` directory was previously
+deleted. The directory exists in `/overlay/upper/` but the merged `/www/` path returns ENOENT.
+
+**Fix:** Drop the page cache before installing:
+```sh
+echo 3 > /proc/sys/vm/drop_caches
+apk add --allow-untrusted /tmp/luci-app-starlink-*.apk
+```
+
+This does not occur on a fresh router — only after the `starlink/` directory has been created and
+then deleted. The Makefile `preinst` creates the directory pre-extraction, but the stale dcache
+entry means overlayfs can't see it until caches are dropped.
+
+After a reboot the issue does not recur.
+
 ---
 
 ## Verification Commands
@@ -613,8 +630,8 @@ ACL: `read` → status, dish. `write` → reboot_dish.
 |------|-------|
 | Repo | `https://github.com/bigmalloy/openwrt-starlink-control` |
 | Local path | `/home/mike/claude/openwrt-starlink-apk` |
-| Latest release | `v1.0.0` — `luci-app-starlink-1.0.0-r1.apk` |
-| APK output | `output/luci-app-starlink-1.0.0-r1.apk` |
+| Latest release | `v1.0.0` — `luci-app-starlink-1.0.0-r2.apk` |
+| APK output | `output/luci-app-starlink-1.0.0-r2.apk` |
 
 ---
 
