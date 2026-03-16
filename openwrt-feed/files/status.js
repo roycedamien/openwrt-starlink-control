@@ -23,6 +23,12 @@ var callRebootDish = rpc.declare({
 	expect: {}
 });
 
+var callDisableHwOffloading = rpc.declare({
+	object: 'luci.starlink',
+	method: 'disable_hw_offloading',
+	expect: {}
+});
+
 // ── Formatters ────────────────────────────────────────────────────────────────
 
 function fmtBytes(b) {
@@ -391,14 +397,17 @@ function buildConfigCard(s) {
 	var swOff  = s.sw_offloading === '1';
 	var hwOff  = s.hw_offloading === '1';
 
+	// HW offloading requires flow_offloading=1 (SW) as a UCI prerequisite, so when
+	// HW is on both UCI values are 1. Show effective mode as a single row.
+	var offloadMode = hwOff ? 'hardware' : swOff ? 'software' : 'none';
+	var offloadClass = hwOff ? 'warn' : swOff ? 'ok' : 'muted';
+
 	var cfgItems = [
-		['TCP CC',         badge(tcp_cc,  tcp_cc === 'hybla' ? 'ok' : tcp_cc === 'cubic' ? 'warn' : 'info')],
-		['Default qdisc',  badge(qdisc,   qdisc === 'fq_codel' ? 'ok' : 'warn')],
-		['MSS clamping',   badge(mtu  ? 'enabled'  : 'disabled', mtu  ? 'ok' : 'warn')],
-		['SW offloading',  badge(swOff ? 'on'  : 'off', swOff ? 'ok' : 'muted')],
-		// HW offloading is bad for fq_codel — flag it if on
-		['HW offloading',  badge(hwOff ? 'on'  : 'off', hwOff ? 'warn' : 'ok')],
-		['WAN device',     badge(s.wan_dev || 'unknown', 'muted')],
+		['TCP CC',        badge(tcp_cc,    tcp_cc === 'hybla' ? 'ok' : tcp_cc === 'cubic' ? 'warn' : 'info')],
+		['Default qdisc', badge(qdisc,     qdisc === 'fq_codel' && !hwOff ? 'ok' : 'warn')],
+		['MSS clamping',  badge(mtu ? 'enabled' : 'disabled', mtu ? 'ok' : 'warn')],
+		['Offloading',    badge(offloadMode, offloadClass)],
+		['WAN device',    badge(s.wan_dev || 'unknown', s.wan_dev ? 'ok' : 'warn')],
 	];
 
 	for (var i = 0; i < cfgItems.length; i++) {
@@ -413,9 +422,6 @@ function buildConfigCard(s) {
 	}
 
 	// Config warnings
-	if (s.hw_offloading === '1') {
-		body += '<div class="sl-note">⚠ Hardware offloading is <strong>on</strong> — this bypasses the Linux qdisc stack so fq_codel is inactive. Disable with: <code>uci set firewall.@defaults[0].flow_offloading_hw=0 && uci commit firewall && service firewall restart</code></div>';
-	}
 	if (s.tcp_cc && s.tcp_cc !== 'hybla') {
 		body += '<div class="sl-note">ℹ TCP congestion control is <strong>' + s.tcp_cc + '</strong>. For satellite links, hybla is preferred: <code>apk add kmod-tcp-hybla</code></div>';
 	}
@@ -468,7 +474,11 @@ return view.extend({
 
 		poll.add(function() {
 			return Promise.all([ callStatus(), callDish() ]).then(function(d) {
-				self._updateView(container, d[0] || {}, d[1] || {});
+				var s = d[0] || {};
+				if (s.hw_offloading === '1') {
+					callDisableHwOffloading();
+				}
+				self._updateView(container, s, d[1] || {});
 			});
 		}, 10);
 

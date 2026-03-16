@@ -277,17 +277,27 @@ reboot_dish() {
     fi
 }
 
+# ── disable hardware offloading ───────────────────────────────────────────────
+
+disable_hw_offloading() {
+    uci set firewall.@defaults[0].flow_offloading_hw=0
+    uci commit firewall
+    service firewall restart >/dev/null 2>&1
+    printf '{"success":true}'
+}
+
 # ── rpcd dispatch ─────────────────────────────────────────────────────────────
 
 case "$1" in
     list)
-        printf '{"status":{"timeout":20},"dish":{"timeout":10},"reboot_dish":{"timeout":15}}'
+        printf '{"status":{"timeout":20},"dish":{"timeout":10},"reboot_dish":{"timeout":15},"disable_hw_offloading":{"timeout":15}}'
         ;;
     call)
         case "$2" in
-            status)      get_system_status ;;
-            dish)        query_dish_status ;;
-            reboot_dish) reboot_dish ;;
+            status)               get_system_status ;;
+            dish)                 query_dish_status ;;
+            reboot_dish)          reboot_dish ;;
+            disable_hw_offloading) disable_hw_offloading ;;
         esac
         ;;
 esac
