@@ -48,16 +48,21 @@ This package is designed to work alongside [starlink-openwrt-ipv6-optimized](htt
 
 grpcurl is required to query the Starlink dish gRPC API at `192.168.100.1:9200`. It is not included in the APK and must be installed first.
 
+Use the install script (auto-detects architecture):
+
 ```sh
-# Download grpcurl v1.9.3 for linux/arm64
+scp -O install-grpcurl.sh root@192.168.1.1:/tmp/
+ssh root@192.168.1.1 'sh /tmp/install-grpcurl.sh'
+```
+
+Or manually for linux/arm64 (GL-iNet Beryl AX / MT3000):
+
+```sh
 cd /tmp
 wget -O grpcurl.tar.gz https://github.com/fullstorydev/grpcurl/releases/download/v1.9.3/grpcurl_1.9.3_linux_arm64.tar.gz
 tar xzf grpcurl.tar.gz grpcurl
 mv grpcurl /usr/bin/grpcurl
 chmod +x /usr/bin/grpcurl
-
-# Verify — should return dish status JSON
-grpcurl -plaintext -d '{"getStatus":{}}' 192.168.100.1:9200 SpaceX.API.Device.Device/Handle
 ```
 
 ### Step 2 — Install the APK
