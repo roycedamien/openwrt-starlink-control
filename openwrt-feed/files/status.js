@@ -47,6 +47,18 @@ var callRouterStats = rpc.declare({
 	expect: {}
 });
 
+var callSetHomePage = rpc.declare({
+	object: 'luci.starlink',
+	method: 'set_home_page',
+	expect: {}
+});
+
+var callUnsetHomePage = rpc.declare({
+	object: 'luci.starlink',
+	method: 'unset_home_page',
+	expect: {}
+});
+
 var callApplyStarlinkConfig = rpc.declare({
 	object: 'luci.starlink',
 	method: 'apply_starlink_config',
@@ -515,7 +527,7 @@ function buildRouterStatsCard(rs) {
 	return card('Router Stats', '⚡', body);
 }
 
-function buildDevicesCard(devData) {
+function buildDevicesCard(devData, s) {
 	var raw  = (devData && devData.devices) ? devData.devices : [];
 
 	// Deduplicate by MAC — prefer IPv4 over IPv6, then active over stale
@@ -583,6 +595,19 @@ function buildDevicesCard(devData) {
 		body += '</div>';
 	}
 	body += '</div>';
+
+	// DHCP range
+	var lanIp     = s ? (s.lan_ip     || '').trim() : '';
+	var dhcpStart = s ? (parseInt(s.dhcp_start) || 0) : 0;
+	var dhcpLimit = s ? (parseInt(s.dhcp_limit) || 0) : 0;
+	if (lanIp && dhcpStart && dhcpLimit) {
+		var subnet   = lanIp.replace(/\.\d+$/, '');
+		var firstIp  = subnet + '.' + dhcpStart;
+		var lastIp   = subnet + '.' + (dhcpStart + dhcpLimit - 1);
+		body += '<div style="margin-top:10px;font-size:0.78em;color:var(--sl-muted);text-transform:uppercase;letter-spacing:.05em;padding:4px 0 2px">DHCP Range</div>';
+		body += row('Range', '<span style="font-family:monospace">' + firstIp + ' – ' + lastIp + '</span>');
+		body += row('Pool size', dhcpLimit + ' addresses');
+	}
 
 	return card('Connected Devices &nbsp;' + titleBadge, '🖥️', body);
 }
@@ -671,6 +696,16 @@ function buildConfigCard(s, cs) {
 		body += '<div class="sl-note">⚠ odhcpd prefix lifetime override is <strong>not set</strong> — LAN clients may see frequent IPv6 address churn from Starlink\'s short lifetimes (~129s).</div>';
 	}
 
+	// ── Set as default home page button ──────────────────────────────────────
+	var isHome = s.luci_home === '1';
+	var homeStyle = isHome
+		? 'background:#1a7f37;border-color:#2ea043;color:#fff'
+		: 'background:#21262d;border-color:#6e7781;color:#8b949e';
+	var homeText = isHome ? '🏠 Default Home Page (click to revert)' : '🏠 Set as Default Home Page';
+	body += '<button class="sl-cfg-btn" style="' + homeStyle + ';margin-top:8px" ' +
+		'data-ishome="' + (isHome ? 'true' : 'false') + '" ' +
+		'onclick="starlinkToggleHome(this)">' + homeText + '</button>';
+
 	// ── Starlink config apply button ─────────────────────────────────────────
 	var cfgActive = cs && cs.active === true;
 
@@ -754,6 +789,26 @@ window.starlinkApplyConfig = function(btn) {
 	});
 };
 
+// ── Toggle home page handler ──────────────────────────────────────────────────
+
+window.starlinkToggleHome = function(btn) {
+	if (btn.disabled) return;
+	btn.disabled = true;
+	var isHome = btn.getAttribute('data-ishome') === 'true';
+	var call = isHome ? callUnsetHomePage() : callSetHomePage();
+	call.then(function() {
+		var nowHome = !isHome;
+		btn.setAttribute('data-ishome', nowHome ? 'true' : 'false');
+		btn.textContent = nowHome ? '🏠 Default Home Page (click to revert)' : '🏠 Set as Default Home Page';
+		btn.style.background  = nowHome ? '#1a7f37' : '#21262d';
+		btn.style.borderColor = nowHome ? '#2ea043' : '#6e7781';
+		btn.style.color       = nowHome ? '#fff'    : '#8b949e';
+		btn.disabled = false;
+	}).catch(function() {
+		btn.disabled = false;
+	});
+};
+
 // ── View ──────────────────────────────────────────────────────────────────────
 
 return view.extend({
@@ -810,7 +865,7 @@ return view.extend({
 		html += buildTrafficCard(s, d);
 		html += buildQualityCard(s, d);
 		html += buildRouterStatsCard(rs);
-		html += buildDevicesCard(devData);
+		html += buildDevicesCard(devData, s);
 		html += buildDNSCard(s);
 		html += buildConfigCard(s, cs);
 		html += '</div>';

@@ -230,6 +230,12 @@ get_system_status() {
     wan_peerdns=$(uci -q get network.wan.peerdns   2>/dev/null || echo "1")
     wan6_peerdns=$(uci -q get network.wan6.peerdns 2>/dev/null || echo "1")
 
+    local lan_ip dhcp_start dhcp_limit luci_home
+    lan_ip=$(uci -q get network.lan.ipaddr 2>/dev/null || echo "")
+    dhcp_start=$(uci -q get dhcp.lan.start 2>/dev/null || echo "")
+    dhcp_limit=$(uci -q get dhcp.lan.limit 2>/dev/null || echo "")
+    luci_home=$([ -f /usr/share/luci/menu.d/luci-app-starlink-home.json ] && echo "1" || echo "0")
+
     uptime_s=$(get_uptime_sec)
 
     # Parallel pings — write to temp files, wait
@@ -263,6 +269,10 @@ get_system_status() {
     printf '"wan6_dns":"%s",'            "$(json_str "$wan6_dns")"
     printf '"wan_peerdns":"%s",'         "$(json_str "$wan_peerdns")"
     printf '"wan6_peerdns":"%s",'        "$(json_str "$wan6_peerdns")"
+    printf '"luci_home":"%s",'           "$luci_home"
+    printf '"lan_ip":"%s",'             "$(json_str "$lan_ip")"
+    printf '"dhcp_start":"%s",'         "$(json_str "$dhcp_start")"
+    printf '"dhcp_limit":"%s",'         "$(json_str "$dhcp_limit")"
     printf '"uptime":%s,'                "$uptime_s"
     printf '"ping_8888":"%s",'           "$(json_str "$ping_8")"
     printf '"ping_1001":"%s"'            "$(json_str "$ping_1")"
@@ -293,6 +303,36 @@ disable_hw_offloading() {
     uci set firewall.@defaults[0].flow_offloading_hw=0
     uci commit firewall
     service firewall restart >/dev/null 2>&1
+    printf '{"success":true}'
+}
+
+# ── home page (writes/removes a menu.d entry with order:0 under admin/status) ─
+
+HOME_MENU="/usr/share/luci/menu.d/luci-app-starlink-home.json"
+
+set_home_page() {
+    cat > "$HOME_MENU" <<'EOF'
+{
+  "admin/status/starlink": {
+    "title": "Starlink",
+    "order": 0,
+    "action": {
+      "type": "view",
+      "path": "starlink/status"
+    },
+    "depends": {
+      "acl": [ "luci-app-starlink" ]
+    }
+  }
+}
+EOF
+    rm -rf /tmp/luci-modulecache /tmp/luci-indexcache 2>/dev/null || true
+    printf '{"success":true}'
+}
+
+unset_home_page() {
+    rm -f "$HOME_MENU"
+    rm -rf /tmp/luci-modulecache /tmp/luci-indexcache 2>/dev/null || true
     printf '{"success":true}'
 }
 
@@ -437,7 +477,7 @@ apply_starlink_config() {
 
 case "$1" in
     list)
-        printf '{"status":{"timeout":20},"dish":{"timeout":10},"reboot_dish":{"timeout":15},"disable_hw_offloading":{"timeout":15},"starlink_config_status":{"timeout":5},"apply_starlink_config":{"timeout":10},"devices":{"timeout":5},"router_stats":{"timeout":5}}'
+        printf '{"status":{"timeout":20},"dish":{"timeout":10},"reboot_dish":{"timeout":15},"disable_hw_offloading":{"timeout":15},"starlink_config_status":{"timeout":5},"apply_starlink_config":{"timeout":10},"devices":{"timeout":5},"router_stats":{"timeout":5},"set_home_page":{"timeout":5},"unset_home_page":{"timeout":5}}'
         ;;
     call)
         case "$2" in
@@ -449,6 +489,8 @@ case "$1" in
             apply_starlink_config)  apply_starlink_config ;;
             devices)                get_devices ;;
             router_stats)           get_router_stats ;;
+            set_home_page)          set_home_page ;;
+            unset_home_page)        unset_home_page ;;
         esac
         ;;
 esac
