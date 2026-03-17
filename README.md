@@ -54,7 +54,7 @@ The dashboard checks the configuration on every 10-second refresh. If any watche
 
 ## Related
 
-This package is designed to work alongside [starlink-openwrt-ipv6-optimized](https://github.com/bigmalloy/starlink-openwrt-ipv6-optimized) — a companion guide and configuration reference for setting up OpenWrt as a Starlink bypass router, covering IPv6, odhcpd prefix lifetime fixes, firewall, congestion control, and more.
+The setup script from [starlink-openwrt-ipv6-optimized](https://github.com/bigmalloy/starlink-openwrt-ipv6-optimized) is now bundled directly in this APK as `/usr/bin/starlink-setup`. The **Turn Starlink Config On** button runs it for you — no need to download or run it manually. The companion repo remains a useful reference for the reasoning behind each setting.
 
 ---
 
