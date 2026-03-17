@@ -16,6 +16,7 @@ Works with Starlink Gen3 and higher dish
 - **Traffic** — WAN and LAN byte/packet counters
 - **Quality** — latency to 8.8.8.8 / 1.0.0.1, conntrack usage, router uptime
 - **Configuration** — TCP congestion control, qdisc, flow offloading, MTU fix, DHCPv6-PD lifetime settings
+- **Turn Starlink Config On** button — applies full optimal Starlink IPv6 config (DHCPv6-PD, odhcpd lifetime fix, DNS, NTP, firewall, kernel tuning) with one click; shows green "✓ Starlink Config Active" when all settings are verified, reverts if any setting drifts
 - **Reboot Dish** button with confirmation dialog
 
 Auto-refreshes every 10 seconds.
@@ -48,15 +49,17 @@ Download the latest `.apk` from [Releases](../../releases).
 
 ```sh
 # Copy to router
-scp -O luci-app-starlink-1.0.0-r5.apk root@192.168.1.1:/tmp/
+scp -O luci-app-starlink-1.0.0-r6.apk root@192.168.1.1:/tmp/
 
 # Install (no key verification needed for local install)
-ssh root@192.168.1.1 'apk add --allow-untrusted /tmp/luci-app-starlink-1.0.0-r5.apk'
+ssh root@192.168.1.1 'apk add --allow-untrusted /tmp/luci-app-starlink-1.0.0-r6.apk'
 ```
 
 The post-install script automatically downloads and installs `grpcurl`, then restarts `rpcd` and `uhttpd`. Navigate to **Network → Starlink** in the LuCI menu.
 
 > **Note:** From v1.0.0-r5, grpcurl is downloaded and installed automatically during `apk add`. No manual steps required. If the download fails (no internet access), run `/usr/bin/install-grpcurl` manually once connected.
+>
+> **Note:** From v1.0.0-r6, the **Turn Starlink Config On** button in the Configuration card applies the full recommended Starlink IPv6 setup directly from LuCI — no SSH or manual script execution needed.
 
 ---
 
