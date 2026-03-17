@@ -200,6 +200,7 @@ get_system_status() {
     local tcp_cc def_qdisc wan_qdisc mtu_fix
     local pref_lft valid_lft sw_off hw_off uptime_s
     local ping_8 ping_1
+    local wan_dns wan6_dns wan_peerdns wan6_peerdns
 
     wan_dev=$(get_wan_dev)
     wan_ipv6=$(get_wan_ipv6 "$wan_dev")
@@ -223,6 +224,11 @@ get_system_status() {
 
     pref_lft=$(uci -q get dhcp.lan.max_preferred_lifetime 2>/dev/null || echo "")
     valid_lft=$(uci -q get dhcp.lan.max_valid_lifetime    2>/dev/null || echo "")
+
+    wan_dns=$(uci -q get network.wan.dns   2>/dev/null || echo "")
+    wan6_dns=$(uci -q get network.wan6.dns 2>/dev/null || echo "")
+    wan_peerdns=$(uci -q get network.wan.peerdns   2>/dev/null || echo "1")
+    wan6_peerdns=$(uci -q get network.wan6.peerdns 2>/dev/null || echo "1")
 
     uptime_s=$(get_uptime_sec)
 
@@ -253,6 +259,10 @@ get_system_status() {
     printf '"hw_offloading":"%s",'       "$hw_off"
     printf '"max_preferred_lifetime":"%s",' "$(json_str "$pref_lft")"
     printf '"max_valid_lifetime":"%s",'     "$(json_str "$valid_lft")"
+    printf '"wan_dns":"%s",'             "$(json_str "$wan_dns")"
+    printf '"wan6_dns":"%s",'            "$(json_str "$wan6_dns")"
+    printf '"wan_peerdns":"%s",'         "$(json_str "$wan_peerdns")"
+    printf '"wan6_peerdns":"%s",'        "$(json_str "$wan6_peerdns")"
     printf '"uptime":%s,'                "$uptime_s"
     printf '"ping_8888":"%s",'           "$(json_str "$ping_8")"
     printf '"ping_1001":"%s"'            "$(json_str "$ping_1")"
@@ -286,12 +296,83 @@ disable_hw_offloading() {
     printf '{"success":true}'
 }
 
+# ── router stats ─────────────────────────────────────────────────────────────
+
+get_router_stats() {
+    local load1 load5 load15 num_cpus
+    local mem_total mem_free mem_avail mem_buffers mem_cached mem_srec
+    local swap_total swap_free
+
+    read load1 load5 load15 _ < /proc/loadavg
+    num_cpus=$(grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo 1)
+
+    mem_total=$(awk   '/^MemTotal:/     {print $2}' /proc/meminfo)
+    mem_free=$(awk    '/^MemFree:/      {print $2}' /proc/meminfo)
+    mem_avail=$(awk   '/^MemAvailable:/ {print $2}' /proc/meminfo)
+    mem_buffers=$(awk '/^Buffers:/      {print $2}' /proc/meminfo)
+    mem_cached=$(awk  '/^Cached:/       {print $2}' /proc/meminfo)
+    mem_srec=$(awk    '/^SReclaimable:/ {print $2}' /proc/meminfo)
+    swap_total=$(awk  '/^SwapTotal:/    {print $2}' /proc/meminfo)
+    swap_free=$(awk   '/^SwapFree:/     {print $2}' /proc/meminfo)
+
+    printf '{'
+    printf '"load1":"%s","load5":"%s","load15":"%s",'  "$load1" "$load5" "$load15"
+    printf '"num_cpus":%s,'                             "${num_cpus:-1}"
+    printf '"mem_total":%s,'                            "${mem_total:-0}"
+    printf '"mem_free":%s,'                             "${mem_free:-0}"
+    printf '"mem_available":%s,'                        "${mem_avail:-0}"
+    printf '"mem_buffers":%s,'                          "${mem_buffers:-0}"
+    printf '"mem_cached":%s,'                           "${mem_cached:-0}"
+    printf '"mem_sreclaimable":%s,'                     "${mem_srec:-0}"
+    printf '"swap_total":%s,'                           "${swap_total:-0}"
+    printf '"swap_free":%s'                             "${swap_free:-0}"
+    printf '}'
+}
+
+# ── connected devices ────────────────────────────────────────────────────────
+# Uses ip neigh (ARP/NDP) on br-lan, enriched with hostnames from DHCP leases.
+
+get_devices() {
+    local leases_file="/tmp/dhcp.leases"
+
+    printf '{"devices":['
+
+    ip neigh show dev br-lan 2>/dev/null | \
+    awk -v leases="$leases_file" '
+    BEGIN {
+        first = 1
+        while ((getline line < leases) > 0) {
+            split(line, f, " ")
+            if (f[4] != "*" && f[4] != "")
+                mac_host[tolower(f[2])] = f[4]
+        }
+        close(leases)
+    }
+    /lladdr/ {
+        state = $NF
+        if (state == "FAILED" || state == "NOARP") next
+        ip  = $1
+        mac = $3
+        hostname = (tolower(mac) in mac_host) ? mac_host[tolower(mac)] : ""
+        gsub(/"/, "\\\"", hostname)
+        active = (state == "REACHABLE" || state == "DELAY" || state == "PROBE") ? "true" : "false"
+        if (!first) printf ","
+        printf "{\"ip\":\"%s\",\"mac\":\"%s\",\"hostname\":\"%s\",\"state\":\"%s\",\"active\":%s}",
+            ip, mac, hostname, state, active
+        first = 0
+    }
+    '
+
+    printf ']}'
+}
+
 # ── starlink config status ────────────────────────────────────────────────────
 # Returns {"active":true/false,"sentinel":true/false,"issues":"..."}
 # active = sentinel file exists AND all expected UCI values are in place.
 
 get_starlink_config_status() {
     local sentinel proto pref_lft valid_lft mtu_fix sw_off hw_off ntp_ok issues
+    local wan_peerdns wan6_peerdns wan_dns wan6_dns
 
     if [ -f /etc/starlink-setup-done ]; then
         sentinel="true"
@@ -306,6 +387,11 @@ get_starlink_config_status() {
     sw_off=$(uci -q get firewall.@defaults[0].flow_offloading    2>/dev/null || echo "")
     hw_off=$(uci -q get firewall.@defaults[0].flow_offloading_hw 2>/dev/null || echo "")
 
+    wan_peerdns=$(uci -q get network.wan.peerdns  2>/dev/null || echo "")
+    wan6_peerdns=$(uci -q get network.wan6.peerdns 2>/dev/null || echo "")
+    wan_dns=$(uci -q get network.wan.dns   2>/dev/null || echo "")
+    wan6_dns=$(uci -q get network.wan6.dns 2>/dev/null || echo "")
+
     if uci get system.ntp.server 2>/dev/null | grep -q '192.168.100.1'; then
         ntp_ok="true"
     else
@@ -313,13 +399,18 @@ get_starlink_config_status() {
     fi
 
     issues=""
-    [ "$proto"    != "dhcpv6" ] && issues="${issues}wan6.proto,"
-    [ "$pref_lft" != "3600"   ] && issues="${issues}max_preferred_lifetime,"
-    [ "$valid_lft" != "7200"  ] && issues="${issues}max_valid_lifetime,"
-    [ "$mtu_fix"  != "1"      ] && issues="${issues}mtu_fix,"
-    [ "$sw_off"   != "1"      ] && issues="${issues}flow_offloading,"
-    [ "$hw_off"   = "1"       ] && issues="${issues}flow_offloading_hw,"
-    [ "$ntp_ok"   != "true"   ] && issues="${issues}ntp,"
+    [ "$proto"       != "dhcpv6" ] && issues="${issues}wan6.proto,"
+    [ "$pref_lft"    != "3600"   ] && issues="${issues}max_preferred_lifetime,"
+    [ "$valid_lft"   != "7200"   ] && issues="${issues}max_valid_lifetime,"
+    [ "$mtu_fix"     != "1"      ] && issues="${issues}mtu_fix,"
+    [ "$sw_off"      != "1"      ] && issues="${issues}flow_offloading,"
+    [ "$hw_off"      = "1"       ] && issues="${issues}flow_offloading_hw,"
+    [ "$wan_peerdns" != "0"      ] && issues="${issues}wan.peerdns,"
+    [ "$wan6_peerdns" != "0"     ] && issues="${issues}wan6.peerdns,"
+    # Check key DNS entries are still present
+    echo "$wan_dns"  | grep -qw '1.1.1.1'              || issues="${issues}wan.dns,"
+    echo "$wan6_dns" | grep -qw '2606:4700:4700::1111'  || issues="${issues}wan6.dns,"
+    [ "$ntp_ok"      != "true"   ] && issues="${issues}ntp,"
 
     if [ "$sentinel" = "true" ] && [ -z "$issues" ]; then
         printf '{"active":true,"sentinel":true,"issues":""}'
@@ -346,7 +437,7 @@ apply_starlink_config() {
 
 case "$1" in
     list)
-        printf '{"status":{"timeout":20},"dish":{"timeout":10},"reboot_dish":{"timeout":15},"disable_hw_offloading":{"timeout":15},"starlink_config_status":{"timeout":5},"apply_starlink_config":{"timeout":10}}'
+        printf '{"status":{"timeout":20},"dish":{"timeout":10},"reboot_dish":{"timeout":15},"disable_hw_offloading":{"timeout":15},"starlink_config_status":{"timeout":5},"apply_starlink_config":{"timeout":10},"devices":{"timeout":5},"router_stats":{"timeout":5}}'
         ;;
     call)
         case "$2" in
@@ -356,6 +447,8 @@ case "$1" in
             disable_hw_offloading)  disable_hw_offloading ;;
             starlink_config_status) get_starlink_config_status ;;
             apply_starlink_config)  apply_starlink_config ;;
+            devices)                get_devices ;;
+            router_stats)           get_router_stats ;;
         esac
         ;;
 esac

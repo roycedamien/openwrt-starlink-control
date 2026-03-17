@@ -3,7 +3,7 @@
     "description": "LuCI Starlink Status Dashboard",
     "read": {
       "ubus": {
-        "luci.starlink": [ "status", "dish", "starlink_config_status" ]
+        "luci.starlink": [ "status", "dish", "starlink_config_status", "devices", "router_stats" ]
       }
     },
     "write": {

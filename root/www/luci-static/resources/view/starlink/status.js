@@ -35,6 +35,18 @@ var callStarlinkConfigStatus = rpc.declare({
 	expect: {}
 });
 
+var callDevices = rpc.declare({
+	object: 'luci.starlink',
+	method: 'devices',
+	expect: {}
+});
+
+var callRouterStats = rpc.declare({
+	object: 'luci.starlink',
+	method: 'router_stats',
+	expect: {}
+});
+
 var callApplyStarlinkConfig = rpc.declare({
 	object: 'luci.starlink',
 	method: 'apply_starlink_config',
@@ -408,6 +420,216 @@ function buildQualityCard(s, d) {
 	return card('Quality', '📶', body);
 }
 
+// ── Router stats helpers ──────────────────────────────────────────────────────
+
+function svgGauge(pct, label, sublabel) {
+	var r    = 40;
+	var circ = 2 * Math.PI * r;
+	var arc  = Math.min(Math.max(pct, 0), 100) / 100 * circ;
+	var color = pct > 85 ? 'var(--sl-red)' : pct > 65 ? 'var(--sl-yellow)' : 'var(--sl-green)';
+	return '<svg viewBox="0 0 100 100" style="width:130px;height:130px;display:block">' +
+		'<circle cx="50" cy="50" r="' + r + '" fill="none" stroke="#21262d" stroke-width="12"/>' +
+		'<circle cx="50" cy="50" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="12"' +
+		' stroke-dasharray="' + arc.toFixed(2) + ' ' + circ.toFixed(2) + '"' +
+		' stroke-linecap="round" transform="rotate(-90 50 50)"/>' +
+		'<text x="50" y="47" text-anchor="middle" font-size="18" font-weight="700" fill="#c9d1d9">' + Math.round(pct) + '%</text>' +
+		'<text x="50" y="62" text-anchor="middle" font-size="10" fill="#8b949e">' + label + '</text>' +
+		(sublabel ? '<text x="50" y="74" text-anchor="middle" font-size="8.5" fill="#6e7781">' + sublabel + '</text>' : '') +
+		'</svg>';
+}
+
+function loadBar(load, maxLoad, label) {
+	var pct   = Math.min(load / maxLoad * 100, 100);
+	var color = pct > 85 ? 'var(--sl-red)' : pct > 65 ? 'var(--sl-yellow)' : 'var(--sl-green)';
+	return '<div style="margin:5px 0">' +
+		'<div style="display:flex;justify-content:space-between;font-size:0.8em;margin-bottom:3px">' +
+		'<span style="color:var(--sl-muted)">' + label + '</span>' +
+		'<span style="font-weight:600">' + load.toFixed(2) + '</span>' +
+		'</div>' +
+		'<div style="height:6px;background:#21262d;border-radius:3px;overflow:hidden">' +
+		'<div style="height:100%;width:' + pct.toFixed(1) + '%;background:' + color + ';border-radius:3px;transition:width .6s ease"></div>' +
+		'</div></div>';
+}
+
+function fmtKB(kb) {
+	var mb = kb / 1024;
+	return mb >= 1024 ? (mb / 1024).toFixed(1) + '\u00a0GB' : Math.round(mb) + '\u00a0MB';
+}
+
+function buildRouterStatsCard(rs) {
+	if (!rs || !rs.mem_total) {
+		return card('Router Stats', '⚡', '<div class="sl-na">No data</div>');
+	}
+
+	var memTotal  = parseInt(rs.mem_total)       || 1;
+	var memFree   = parseInt(rs.mem_free)         || 0;
+	var memAvail  = parseInt(rs.mem_available)    || 0;
+	var memCache  = (parseInt(rs.mem_cached) || 0) + (parseInt(rs.mem_buffers) || 0) + (parseInt(rs.mem_sreclaimable) || 0);
+	var memUsed   = memTotal - memAvail;
+	var memUsedPct = memUsed / memTotal * 100;
+	var memCachePct = Math.min(memCache / memTotal * 100, 100 - memUsedPct);
+
+	var load1  = parseFloat(rs.load1)  || 0;
+	var load5  = parseFloat(rs.load5)  || 0;
+	var load15 = parseFloat(rs.load15) || 0;
+	var numCpu = parseInt(rs.num_cpus) || 1;
+	var cpuPct = Math.min(load1 / numCpu * 100, 100);
+
+	var swapTotal = parseInt(rs.swap_total) || 0;
+	var swapFree  = parseInt(rs.swap_free)  || 0;
+	var swapUsed  = swapTotal - swapFree;
+
+	var body = '';
+
+	// ── SVG gauges ──────────────────────────────────────────────────────────
+	body += '<div style="display:flex;justify-content:space-around;align-items:center;padding:4px 0 10px">';
+	body += svgGauge(memUsedPct, 'Memory', fmtKB(memUsed) + ' / ' + fmtKB(memTotal));
+	body += svgGauge(cpuPct,     'CPU Load', load1.toFixed(2) + ' (' + numCpu + '\u00a0core' + (numCpu > 1 ? 's' : '') + ')');
+	body += '</div>';
+
+	// ── Memory stacked bar ──────────────────────────────────────────────────
+	body += '<div style="font-size:0.78em;color:var(--sl-muted);margin-bottom:4px;letter-spacing:.03em">MEMORY BREAKDOWN</div>';
+	body += '<div style="height:8px;background:#21262d;border-radius:4px;overflow:hidden;margin-bottom:6px">' +
+		'<div style="display:flex;height:100%">' +
+		'<div style="width:' + memUsedPct.toFixed(1) + '%;background:var(--sl-green);transition:width .6s ease"></div>' +
+		'<div style="width:' + memCachePct.toFixed(1) + '%;background:#388bfd;transition:width .6s ease"></div>' +
+		'</div></div>';
+	body += '<div style="display:flex;gap:14px;font-size:0.8em;margin-bottom:10px;flex-wrap:wrap">';
+	body += '<span><span style="display:inline-block;width:9px;height:9px;background:var(--sl-green);border-radius:2px;margin-right:4px;vertical-align:middle"></span>Used\u00a0' + fmtKB(memUsed) + '</span>';
+	body += '<span><span style="display:inline-block;width:9px;height:9px;background:#388bfd;border-radius:2px;margin-right:4px;vertical-align:middle"></span>Cache\u00a0' + fmtKB(memCache) + '</span>';
+	body += '<span><span style="display:inline-block;width:9px;height:9px;background:#21262d;border:1px solid #444;border-radius:2px;margin-right:4px;vertical-align:middle"></span>Free\u00a0' + fmtKB(memFree) + '</span>';
+	body += '</div>';
+
+	// Swap (only if present)
+	if (swapTotal > 0) {
+		var swapPct = swapUsed / swapTotal * 100;
+		body += row('Swap', badge(fmtKB(swapUsed) + ' / ' + fmtKB(swapTotal), swapPct > 50 ? 'warn' : 'ok'));
+	}
+
+	// ── Load average bars ───────────────────────────────────────────────────
+	body += '<div style="font-size:0.78em;color:var(--sl-muted);margin-bottom:4px;letter-spacing:.03em">LOAD AVERAGE</div>';
+	body += loadBar(load1,  numCpu, '1\u00a0min');
+	body += loadBar(load5,  numCpu, '5\u00a0min');
+	body += loadBar(load15, numCpu, '15\u00a0min');
+
+	return card('Router Stats', '⚡', body);
+}
+
+function buildDevicesCard(devData) {
+	var raw  = (devData && devData.devices) ? devData.devices : [];
+
+	// Deduplicate by MAC — prefer IPv4 over IPv6, then active over stale
+	var byMac = {};
+	for (var i = 0; i < raw.length; i++) {
+		var d   = raw[i];
+		var isV4 = d.ip.indexOf(':') === -1;
+		if (!byMac[d.mac]) {
+			byMac[d.mac] = d;
+		} else {
+			var cur    = byMac[d.mac];
+			var curIsV4 = cur.ip.indexOf(':') === -1;
+			if (isV4 && !curIsV4) byMac[d.mac] = d;        // prefer IPv4
+			else if (isV4 === curIsV4 && d.active && !cur.active) byMac[d.mac] = d; // prefer active
+		}
+	}
+	var list = [];
+	for (var mac in byMac) { if (byMac.hasOwnProperty(mac)) list.push(byMac[mac]); }
+
+	// Sort: active first, then alphabetically by hostname/IP
+	list.sort(function(a, b) {
+		if (a.active !== b.active) return a.active ? -1 : 1;
+		var na = (a.hostname || a.ip).toLowerCase();
+		var nb = (b.hostname || b.ip).toLowerCase();
+		return na < nb ? -1 : na > nb ? 1 : 0;
+	});
+
+	var activeCount = 0;
+	for (var i = 0; i < list.length; i++) { if (list[i].active) activeCount++; }
+
+	var titleBadge = badge(activeCount + ' active', activeCount > 0 ? 'ok' : 'muted') +
+		'&nbsp;' + badge(list.length + ' total', 'info');
+
+	var body = '';
+
+	if (list.length === 0) {
+		body += '<div class="sl-na">No devices detected on LAN</div>';
+		return card('Connected Devices', '🖥️', body);
+	}
+
+	body += '<div style="max-height:280px;overflow-y:auto;margin:-4px -2px">';
+	for (var j = 0; j < list.length; j++) {
+		var d   = list[j];
+		var name = d.hostname ? d.hostname : d.ip;
+		var sub  = d.hostname ? d.ip : '';
+		var dotC = d.active ? 'var(--sl-green)' : '#444c56';
+		var stateC = d.active ? 'ok' : 'off';
+
+		body += '<div class="sl-row" style="padding:6px 2px">';
+
+		// Left: dot + name + IP sub-label
+		body += '<span style="display:flex;align-items:center;gap:7px;min-width:0">' +
+			'<span style="width:8px;height:8px;border-radius:50%;background:' + dotC + ';flex-shrink:0"></span>' +
+			'<span style="min-width:0">' +
+			'<span style="font-weight:500">' + name + '</span>' +
+			(sub ? '<span style="color:var(--sl-muted);font-size:0.8em;margin-left:5px">' + sub + '</span>' : '') +
+			'</span></span>';
+
+		// Right: MAC + state badge
+		body += '<span style="display:flex;align-items:center;gap:6px;flex-shrink:0">' +
+			'<span style="color:var(--sl-muted);font-size:0.78em;font-family:monospace">' + d.mac + '</span>' +
+			badge(d.state, stateC) +
+			'</span>';
+
+		body += '</div>';
+	}
+	body += '</div>';
+
+	return card('Connected Devices &nbsp;' + titleBadge, '🖥️', body);
+}
+
+function buildDNSCard(s) {
+	var body = '';
+
+	var peerdnsOff4 = s.wan_peerdns  === '0';
+	var peerdnsOff6 = s.wan6_peerdns === '0';
+
+	// peerdns status rows
+	body += row('peerdns (IPv4)', badge(peerdnsOff4 ? 'disabled' : 'enabled (using ISP DNS)',
+		peerdnsOff4 ? 'ok' : 'err'));
+	body += row('peerdns (IPv6)', badge(peerdnsOff6 ? 'disabled' : 'enabled (using ISP DNS)',
+		peerdnsOff6 ? 'ok' : 'err'));
+
+	// IPv4 DNS servers
+	var dns4 = (s.wan_dns || '').trim();
+	if (dns4) {
+		var servers4 = dns4.split(/\s+/);
+		body += '<div style="margin-top:8px;font-size:0.78em;color:var(--sl-muted);text-transform:uppercase;letter-spacing:.05em;padding:4px 0 2px">IPv4 DNS Servers</div>';
+		for (var i = 0; i < servers4.length; i++) {
+			var s4 = servers4[i];
+			body += row(s4,
+				badge('configured', 'ok'));
+		}
+	} else {
+		body += row('IPv4 DNS', badge('none configured', 'err'));
+	}
+
+	// IPv6 DNS servers
+	var dns6 = (s.wan6_dns || '').trim();
+	if (dns6) {
+		var servers6 = dns6.split(/\s+/);
+		body += '<div style="margin-top:8px;font-size:0.78em;color:var(--sl-muted);text-transform:uppercase;letter-spacing:.05em;padding:4px 0 2px">IPv6 DNS Servers</div>';
+		for (var j = 0; j < servers6.length; j++) {
+			var s6 = servers6[j];
+			body += row('<span style="font-family:monospace;font-size:0.9em">' + s6 + '</span>',
+				badge('configured', 'ok'));
+		}
+	} else {
+		body += row('IPv6 DNS', badge('none configured', 'err'));
+	}
+
+	return card('DNS Servers', '🔒', body);
+}
+
 function buildConfigCard(s, cs) {
 	var body = '<div class="sl-cfg-grid">';
 
@@ -540,28 +762,28 @@ return view.extend({
 	handleReset:     null,
 
 	load: function() {
-		return Promise.all([ callStatus(), callDish(), callStarlinkConfigStatus() ]);
+		return Promise.all([ callStatus(), callDish(), callStarlinkConfigStatus(), callDevices(), callRouterStats() ]);
 	},
 
 	render: function(data) {
 		var self = this;
 		var container = E('div');
-		this._updateView(container, data[0] || {}, data[1] || {}, data[2] || {});
+		this._updateView(container, data[0] || {}, data[1] || {}, data[2] || {}, data[3] || {}, data[4] || {});
 
 		poll.add(function() {
-			return Promise.all([ callStatus(), callDish(), callStarlinkConfigStatus() ]).then(function(d) {
+			return Promise.all([ callStatus(), callDish(), callStarlinkConfigStatus(), callDevices(), callRouterStats() ]).then(function(d) {
 				var s = d[0] || {};
 				if (s.hw_offloading === '1') {
 					callDisableHwOffloading();
 				}
-				self._updateView(container, s, d[1] || {}, d[2] || {});
+				self._updateView(container, s, d[1] || {}, d[2] || {}, d[3] || {}, d[4] || {});
 			});
 		}, 10);
 
 		return container;
 	},
 
-	_updateView: function(container, s, d, cs) {
+	_updateView: function(container, s, d, cs, devData, rs) {
 		var dishState = (d && d.available) ? (d.state || 'UNKNOWN') : null;
 		var isConn    = dishState === 'CONNECTED';
 		var now       = new Date().toLocaleTimeString();
@@ -587,6 +809,9 @@ return view.extend({
 		html += buildIPv6Card(s);
 		html += buildTrafficCard(s, d);
 		html += buildQualityCard(s, d);
+		html += buildRouterStatsCard(rs);
+		html += buildDevicesCard(devData);
+		html += buildDNSCard(s);
 		html += buildConfigCard(s, cs);
 		html += '</div>';
 
