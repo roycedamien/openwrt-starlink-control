@@ -63,10 +63,14 @@ docker run --rm \
     echo "--- Configuring ---"
     make defconfig 2>&1 | tail -3
     echo "CONFIG_PACKAGE_luci-app-starlink=m" >> .config
+    echo "CONFIG_PACKAGE_lua=y" >> .config
     make defconfig 2>&1 | tail -3
 
+    echo "--- Building Lua (required by lucihttp) ---"
+    make package/lua/compile -j4 >/dev/null 2>&1 && echo "lua OK" || echo "WARNING: lua build failed"
+
     echo "--- Compiling ---"
-    make package/luci-app-starlink/compile V=s 2>&1 | tail -20
+    make package/luci-app-starlink/compile V=s 2>&1 | tail -30
 
     echo "--- Copying output ---"
     APK=$(find bin/ -name "luci-app-starlink*.apk" -type f | head -1)
