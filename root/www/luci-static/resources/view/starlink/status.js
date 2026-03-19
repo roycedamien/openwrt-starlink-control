@@ -381,11 +381,12 @@ function buildAlertsCard(d) {
 	body += '<button class="sl-reboot-btn" id="sl-reboot-btn" onclick="starlinkRebootDish(this)">⟳ Reboot Dish</button>';
 
 	// Heater status (read-only — dish setConfig requires SpaceX auth)
-	if (d.heater_mode === 'ALWAYS_ON' || d.heater_mode === 'ALWAYS_OFF') {
-		var heaterOn = d.heater_mode === 'ALWAYS_ON';
+	if (d.heater_mode === 'ALWAYS_ON' || d.heater_mode === 'ALWAYS_OFF' || d.heater_mode === 'MANUAL') {
+		var heaterLabel = d.heater_mode === 'ALWAYS_ON' ? 'on' : d.heater_mode === 'ALWAYS_OFF' ? 'off' : 'auto';
+		var heaterStyle = d.heater_mode === 'ALWAYS_ON' ? 'warn' : d.heater_mode === 'ALWAYS_OFF' ? 'muted' : 'ok';
 		body += '<div class="sl-heater-row">' +
 			'<span>❄ Snow melt heater</span>' +
-			badge(heaterOn ? 'on' : 'off', heaterOn ? 'warn' : 'muted') +
+			badge(heaterLabel, heaterStyle) +
 			'</div>';
 	}
 
