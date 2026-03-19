@@ -204,7 +204,7 @@ query_dish_status() {
 # ── system status ─────────────────────────────────────────────────────────────
 
 get_system_status() {
-    local wan_dev wan_ipv6 lan_ipv6 ipv6_route delegated
+    local wan_dev wan_ipv6 wan_lla lan_ipv6 ipv6_route delegated
     local wan_stats lan_stats ct_count ct_max
     local tcp_cc def_qdisc wan_qdisc mtu_fix wan_zone
     local ra_maxinterval ra_mininterval sw_off hw_off uptime_s
@@ -213,6 +213,8 @@ get_system_status() {
 
     wan_dev=$(get_wan_dev)
     wan_ipv6=$(get_wan_ipv6 "$wan_dev")
+    wan_lla=$(ip -6 addr show dev "$wan_dev" 2>/dev/null \
+        | awk '/inet6.*fe80/ {print $2; exit}')
     lan_ipv6=$(get_lan_ipv6)
     ipv6_route=$(get_ipv6_default_route)
     delegated=$(get_delegated_prefix)
@@ -277,6 +279,7 @@ get_system_status() {
     printf '{'
     printf '"wan_dev":"%s",'             "$(json_str "$wan_dev")"
     printf '"wan_ipv6":"%s",'            "$(json_str "$wan_ipv6")"
+    printf '"wan_lla":"%s",'             "$(json_str "$wan_lla")"
     printf '"lan_ipv6":"%s",'            "$(json_str "$lan_ipv6")"
     printf '"ipv6_default_route":"%s",'  "$(json_str "$ipv6_route")"
     printf '"delegated_prefix":"%s",'    "$(json_str "$delegated")"

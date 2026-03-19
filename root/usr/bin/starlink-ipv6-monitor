@@ -1,0 +1,98 @@
+#!/bin/sh
+# starlink-ipv6-monitor
+# Detects when the Starlink dish stops sending DHCPv6-PD responses.
+#
+# The dish reboots nightly (~3am). After some firmware versions its DHCPv6-PD
+# server fails to restart — odhcp6c sends SOLICITs but gets zero responses.
+# IPv4, gRPC, and link-local IPv6 all remain up; only prefix delegation breaks.
+#
+# Usage:
+#   /usr/bin/starlink-ipv6-monitor          # manual run, prints status + exit 0/1
+#
+# Cron (every 5 minutes):
+#   echo "*/5 * * * * /usr/bin/starlink-ipv6-monitor" >> /etc/crontabs/root
+#   /etc/init.d/cron restart
+#
+# Logs to syslog (tag: starlink-ipv6). View with:
+#   logread | grep starlink-ipv6
+
+LOG_TAG="starlink-ipv6"
+PING_HOST="2606:4700:4700::1111"   # Cloudflare — avoid 2001:4860:4860::8888 if preferred
+PING_COUNT=2
+PING_WAIT=3
+
+WAN_DEV=$(uci get network.wan.device 2>/dev/null)
+[ -z "$WAN_DEV" ] && WAN_DEV="eth0"
+LAN_BR=$(uci get network.lan.device 2>/dev/null)
+[ -z "$LAN_BR" ] && LAN_BR="br-lan"
+
+# --- Checks ---
+
+# 1. WAN link-local — confirms the WAN interface itself is up.
+#    If absent, the problem is local (netifd, interface down), not the dish.
+WAN_LLA=$(ip -6 addr show dev "$WAN_DEV" 2>/dev/null | awk '/inet6.*fe80/ {print $2; exit}')
+
+# 2. DHCPv6-PD /56 — the delegated prefix from the dish.
+#    Absent = dish not responding to SOLICITs (or odhcp6c not running).
+PREFIX56=$(ip -6 route show 2>/dev/null | awk 'match($0, /[0-9a-f:]+\/56/) {print substr($0,RSTART,RLENGTH); exit}')
+
+# 3. LAN global address — confirms the /56 was sub-assigned to br-lan.
+LAN_GUA=$(ip -6 addr show dev "$LAN_BR" 2>/dev/null | awk '/inet6/ && /scope global/ {print $2; exit}')
+
+# 4. IPv6 default route — required for outbound IPv6 connectivity.
+DEFAULT_ROUTE=$(ip -6 route show default 2>/dev/null | head -1)
+
+# --- Classify ---
+
+ISSUES=""
+VERDICT=""
+
+if [ -z "$WAN_LLA" ]; then
+    # WAN interface not up — local problem, not dish
+    ISSUES="wan-lla-missing"
+    VERDICT="local"
+elif [ -z "$PREFIX56" ]; then
+    # WAN LLA present but no /56 — dish DHCPv6-PD not responding
+    ISSUES="no-dhcpv6-pd"
+    VERDICT="dish"
+    [ -z "$LAN_GUA" ]       && ISSUES="$ISSUES,no-lan-gua"
+    [ -z "$DEFAULT_ROUTE" ] && ISSUES="$ISSUES,no-default-route"
+elif [ -z "$LAN_GUA" ]; then
+    # /56 present but not assigned to LAN — odhcpd issue
+    ISSUES="no-lan-gua"
+    VERDICT="odhcpd"
+elif [ -z "$DEFAULT_ROUTE" ]; then
+    # Address present but no default route — routing issue
+    ISSUES="no-default-route"
+    VERDICT="routing"
+fi
+
+# 5. Connectivity ping (only if address/route look OK)
+if [ -z "$VERDICT" ] && command -v ping6 >/dev/null 2>&1; then
+    if ! ping6 -c "$PING_COUNT" -W "$PING_WAIT" -q "$PING_HOST" >/dev/null 2>&1; then
+        ISSUES="ping6-failed($PING_HOST)"
+        VERDICT="connectivity"
+    fi
+fi
+
+# --- Report ---
+
+if [ -n "$VERDICT" ]; then
+    MSG="IPv6 broken [$VERDICT]: $ISSUES | wan_lla=${WAN_LLA:-none} prefix56=${PREFIX56:-none} lan_gua=${LAN_GUA:-none}"
+    logger -t "$LOG_TAG" "$MSG"
+    echo "FAIL: $MSG"
+
+    # Specific guidance for the common dish DHCPv6-PD failure
+    if [ "$VERDICT" = "dish" ]; then
+        logger -t "$LOG_TAG" "Dish DHCPv6-PD broken — hard power cycle required (software reboot does not fix it)"
+        echo "NOTE: Dish DHCPv6-PD not responding. Hard power cycle the dish (unplug 10s)."
+        echo "      Software reboot via grpcurl does NOT fix this state."
+    fi
+
+    exit 1
+fi
+
+MSG="IPv6 OK | prefix56=$PREFIX56 lan_gua=$LAN_GUA route=$(echo "$DEFAULT_ROUTE" | awk '{print $1}')"
+logger -t "$LOG_TAG" "$MSG"
+echo "OK: $MSG"
+exit 0

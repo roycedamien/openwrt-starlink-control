@@ -241,6 +241,9 @@ var CSS = '<style>' +
 '.sl-heater-row{display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding:9px 0;border-top:1px solid #21262d;font-size:0.88em;color:var(--sl-text)}' +
 '.sl-heater-chk{width:16px;height:16px;cursor:pointer;accent-color:#2ea043}' +
 '.sl-heater-chk:disabled{cursor:not-allowed;opacity:0.4}' +
+'.sl-ipv6-warn{background:#2d1215;border:1px solid #f85149;border-left:3px solid #f85149;border-radius:0 4px 4px 0;padding:10px 12px;font-size:0.84em;color:#f85149;margin-bottom:10px}' +
+'.sl-ipv6-warn-title{font-weight:700;margin-bottom:4px}' +
+'.sl-ipv6-warn-body{color:#ccc;line-height:1.5}' +
 '@keyframes sl-fan-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}' +
 '</style>';
 
@@ -393,15 +396,37 @@ function buildAlertsCard(d) {
 	return card('Alerts', '🔔', body);
 }
 
-function buildIPv6Card(s) {
+function buildIPv6Card(s, d) {
 	var body = '';
 
 	var hasWan    = !!(s.wan_ipv6    && s.wan_ipv6.trim());
 	var hasLan    = !!(s.lan_ipv6    && s.lan_ipv6.trim());
 	var hasRoute  = !!(s.ipv6_default_route && s.ipv6_default_route.trim());
 	var hasPrefix = !!(s.delegated_prefix  && s.delegated_prefix.trim());
+	var hasLLA    = !!(s.wan_lla && s.wan_lla.trim());
 	var raMaxOk = s.ra_maxinterval === '60';
 	var raMinOk = s.ra_mininterval === '20';
+
+	// DHCPv6-PD failure detection
+	if (!hasPrefix) {
+		if (hasLLA) {
+			// WAN interface is up (link-local present) but dish not sending /56
+			body += '<div class="sl-ipv6-warn">' +
+				'<div class="sl-ipv6-warn-title">⚠ Dish not sending DHCPv6-PD</div>' +
+				'<div class="sl-ipv6-warn-body">WAN link is up but no /56 prefix received. ' +
+				'The dish DHCPv6-PD server may have stopped after a reboot. ' +
+				'Hard power cycle the dish (unplug 10 s) to restore IPv6. ' +
+				'Software reboot does not fix this.</div>' +
+				'</div>';
+		} else {
+			// No link-local either — WAN interface not up
+			body += '<div class="sl-ipv6-warn">' +
+				'<div class="sl-ipv6-warn-title">⚠ No IPv6 — WAN interface not up</div>' +
+				'<div class="sl-ipv6-warn-body">No link-local address on WAN. ' +
+				'Check the physical connection to the dish.</div>' +
+				'</div>';
+		}
+	}
 
 	body += row('WAN IPv6',
 		dot(hasWan) + (hasWan
@@ -1114,7 +1139,7 @@ return view.extend({
 		html += buildDishCard(d);
 		html += buildAlignmentCard(d);
 		html += buildAlertsCard(d);
-		html += buildIPv6Card(s);
+		html += buildIPv6Card(s, d);
 		html += buildTrafficCard(s, d);
 		html += buildQualityCard(s, d);
 		html += buildRouterStatsCard(rs, s);
