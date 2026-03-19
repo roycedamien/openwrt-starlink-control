@@ -399,8 +399,8 @@ function buildIPv6Card(s) {
 	var hasLan    = !!(s.lan_ipv6    && s.lan_ipv6.trim());
 	var hasRoute  = !!(s.ipv6_default_route && s.ipv6_default_route.trim());
 	var hasPrefix = !!(s.delegated_prefix  && s.delegated_prefix.trim());
-	var hasPrefLft = !!(s.max_preferred_lifetime && s.max_preferred_lifetime !== 'not_set' && s.max_preferred_lifetime !== '');
-	var hasValidLft = !!(s.max_valid_lifetime    && s.max_valid_lifetime    !== 'not_set' && s.max_valid_lifetime    !== '');
+	var raMaxOk = s.ra_maxinterval === '60';
+	var raMinOk = s.ra_mininterval === '20';
 
 	body += row('WAN IPv6',
 		dot(hasWan) + (hasWan
@@ -421,10 +421,9 @@ function buildIPv6Card(s) {
 		? badge('present', 'ok')
 		: badge('missing', 'err'));
 
-	body += row('Preferred LFT',
-		hasPrefLft ? badge(s.max_preferred_lifetime + 's', 'ok') : badge('not set', 'err'));
-	body += row('Valid LFT',
-		hasValidLft ? badge(s.max_valid_lifetime + 's', 'ok') : badge('not set', 'err'));
+	body += row('RA interval',
+		badge((s.ra_maxinterval || '?') + 's max / ' + (s.ra_mininterval || '?') + 's min',
+			(raMaxOk && raMinOk) ? 'ok' : 'warn'));
 
 	return card('IPv6 Connectivity', '🌐', body);
 }
@@ -873,9 +872,7 @@ function buildConfigCard(s, cs) {
 	if (s.tcp_cc && s.tcp_cc !== 'hybla') {
 		body += '<div class="sl-note">ℹ TCP congestion control is <strong>' + s.tcp_cc + '</strong>. For satellite links, hybla is preferred: <code>apk add kmod-tcp-hybla</code></div>';
 	}
-	if (s.max_preferred_lifetime === '' || s.max_preferred_lifetime === 'not_set') {
-		body += '<div class="sl-note">⚠ odhcpd prefix lifetime override is <strong>not set</strong> — LAN clients may see frequent IPv6 address churn from Starlink\'s short lifetimes (~129s).</div>';
-	}
+
 
 	// ── Set as default home page button ──────────────────────────────────────
 	var isHome = s.luci_home === '1';
