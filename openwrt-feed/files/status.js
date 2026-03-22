@@ -267,7 +267,8 @@ function buildDishCard(d) {
 	var drop     = parseFloat(d.drop_rate)  || 0;
 	var obst     = parseFloat(d.fraction_obstructed) || 0;
 	var elev     = parseFloat(d.elevation_deg) || 0;
-	var snrOk    = d.snr_above_noise === 'true';
+	var snrRaw   = d.snr_above_noise || 'unknown';
+	var snrOk    = snrRaw === 'true';
 
 	body += row('State',       badge(state, isConn ? 'ok' : 'warn'));
 	body += row('PoP Latency', badge(latency.toFixed(1) + ' ms',
@@ -276,7 +277,9 @@ function buildDishCard(d) {
 		drop < 0.001 ? 'ok' : drop < 0.01 ? 'warn' : 'err'));
 	body += row('Obstruction', badge(fmtPct(obst),
 		obst < 0.005 ? 'ok' : obst < 0.05 ? 'warn' : 'err'));
-	body += row('SNR OK',      badge(snrOk ? 'yes' : 'no', snrOk ? 'ok' : 'err'));
+	body += row('SNR OK',      snrRaw === 'unknown'
+		? badge('n/a', 'muted')
+		: badge(snrOk ? 'yes' : 'no', snrOk ? 'ok' : 'err'));
 	body += row('Elevation',   elev.toFixed(1) + '°');
 
 	if (d.gps_sats && parseInt(d.gps_sats) > 0)
@@ -831,8 +834,12 @@ function buildDNSCard(s) {
 		dnsMode = 'family';
 	} else if (wan_dns.indexOf('1.1.1.2') !== -1) {
 		dnsMode = 'malware';
-	} else {
+	} else if (wan_dns.indexOf('1.1.1.1') !== -1 || wan_dns === '') {
+		// Matches CF+Google default set, or no static DNS configured yet
 		dnsMode = 'default';
+	} else {
+		// peerdns=0 with servers that don't match any known preset
+		dnsMode = 'custom';
 	}
 
 	var dnsModeLabels = {
@@ -840,17 +847,19 @@ function buildDNSCard(s) {
 		'starlink': 'Starlink (ISP DNS)',
 		'family':   'Family Filter (Cloudflare for Families)',
 		'malware':  'Malware Filter (Cloudflare)',
+		'custom':   'Custom (managed externally)',
 	};
 	var dnsModeNotes = {
 		'family':  'Blocks malware &amp; adult content — <code>1.1.1.3</code> / <code>1.0.0.3</code>',
 		'malware': 'Blocks malware only — <code>1.1.1.2</code> / <code>1.0.0.2</code>',
+		'custom':  'Custom DNS detected — configure via CLI or LuCI &rarr; Network &rarr; Interfaces. This panel will not overwrite your settings.',
 	};
 
 	body += '<div style="margin-top:12px;font-size:0.78em;color:var(--sl-muted);text-transform:uppercase;letter-spacing:.05em;padding:4px 0 2px">DNS Mode</div>';
 	body += '<select id="sl-dns-mode" onchange="starlinkSetDnsMode(this)" ' +
 		'style="width:100%;padding:7px 10px;background:var(--sl-inset);border:1px solid var(--sl-border);' +
 		'border-radius:6px;color:var(--sl-text);font-size:0.88em;cursor:pointer;outline:none">';
-	var modeKeys = ['default', 'starlink', 'family', 'malware'];
+	var modeKeys = ['default', 'starlink', 'family', 'malware', 'custom'];
 	for (var mi = 0; mi < modeKeys.length; mi++) {
 		var mk = modeKeys[mi];
 		body += '<option value="' + mk + '"' + (dnsMode === mk ? ' selected' : '') + '>' +
@@ -1041,8 +1050,13 @@ window.starlinkApplyConfig = function(btn) {
 
 window.starlinkSetDnsMode = function(sel) {
 	var mode = sel.value;
-	sel.disabled = true;
 	var prev = sel.getAttribute('data-prev') || mode;
+	// 'custom' is read-only — revert and let the note explain
+	if (mode === 'custom') {
+		sel.value = prev;
+		return;
+	}
+	sel.disabled = true;
 	sel.setAttribute('data-prev', mode);
 	var calls = {
 		'default':  callSetDnsDefault,

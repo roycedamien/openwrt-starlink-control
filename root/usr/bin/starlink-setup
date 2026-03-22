@@ -17,6 +17,14 @@ set -e
 
 SENTINEL=/etc/starlink-setup-done
 
+# Parse flags
+SKIP_DNS=0
+for arg in "$@"; do
+    case "$arg" in
+        --skip-dns) SKIP_DNS=1 ;;
+    esac
+done
+
 echo "================================================"
 echo " Starlink OpenWrt Setup Script"
 echo "================================================"
@@ -112,14 +120,29 @@ else
 fi
 
 # --- 3. DNS ---
-if [ "$FIRST_RUN" = "1" ]; then
-    echo "[3/7] Configuring DNS..."
-    uci set network.wan.peerdns='0'
-    uci set network.wan.dns='1.1.1.1 1.0.0.1 8.8.8.8 8.8.4.4'
-    uci set network.wan6.peerdns='0'
-    uci set network.wan6.dns='2606:4700:4700::1111 2606:4700:4700::1001 2001:4860:4860::8888 2001:4860:4860::8844'
-    uci commit network
-    echo "      Done."
+if [ "$SKIP_DNS" = "1" ]; then
+    echo "[3/7] DNS — skipping (--skip-dns flag set; preserving your existing DNS config)."
+elif [ "$FIRST_RUN" = "1" ]; then
+    # Auto-detect custom DNS: if peerdns=0 and DNS servers don't match any known
+    # preset (Cloudflare+Google, Family, Malware), the user is running their own
+    # resolver (Technitium, Pi-hole, AdGuard Home, etc.) — preserve it.
+    _cur_peerdns=$(uci -q get network.wan.peerdns 2>/dev/null || true)
+    _cur_dns=$(uci -q get network.wan.dns 2>/dev/null || true)
+    if [ "$_cur_peerdns" = "0" ] && [ -n "$_cur_dns" ] \
+        && ! echo "$_cur_dns" | grep -qE '(1\.1\.1\.[123]|8\.8\.8\.8)'; then
+        echo "[3/7] DNS — skipping (custom resolver detected: $_cur_dns)."
+        echo "      Your existing DNS config is preserved."
+        echo "      The dashboard will show DNS mode as 'Custom'."
+    else
+        echo "[3/7] Configuring DNS (Cloudflare + Google, peerdns=0)..."
+        echo "      To preserve your own DNS config instead, use --skip-dns."
+        uci set network.wan.peerdns='0'
+        uci set network.wan.dns='1.1.1.1 1.0.0.1 8.8.8.8 8.8.4.4'
+        uci set network.wan6.peerdns='0'
+        uci set network.wan6.dns='2606:4700:4700::1111 2606:4700:4700::1001 2001:4860:4860::8888 2001:4860:4860::8844'
+        uci commit network
+        echo "      Done."
+    fi
 else
     echo "[3/7] DNS — skipping (already configured)."
 fi

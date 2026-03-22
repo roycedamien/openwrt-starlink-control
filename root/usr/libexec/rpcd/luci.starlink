@@ -13,6 +13,10 @@ get_wan_dev() {
     uci -q get network.wan.device 2>/dev/null || echo "eth0"
 }
 
+get_lan_dev() {
+    uci -q get network.lan.device 2>/dev/null || echo "br-lan"
+}
+
 get_wan_ipv6() {
     local dev="$1"
     ip -6 addr show dev "$dev" 2>/dev/null \
@@ -20,7 +24,7 @@ get_wan_ipv6() {
 }
 
 get_lan_ipv6() {
-    ip -6 addr show dev br-lan 2>/dev/null \
+    ip -6 addr show dev "$(get_lan_dev)" 2>/dev/null \
         | awk '/inet6[[:space:]].*scope global/ {print $2; exit}'
 }
 
@@ -161,14 +165,15 @@ query_dish_status() {
     heater_mode=$(echo "$cfg_raw" | jsonfilter -e '@.dishGetConfig.dishConfig.snowMeltMode' 2>/dev/null)
 
     # Gen3: state enum is absent when CONNECTED (proto3 omits zero-value fields).
-    # Derive from disablementCode + readyStates.rf instead.
+    # disablementCode absent also means OKAY (proto3 zero value).
+    # readyStates.rf may be absent in bridge/bypass mode even when fully operational,
+    # so we rely on disablementCode alone rather than requiring rf=true.
     if [ -z "$state" ]; then
-        if [ "$disablement" = "OKAY" ] && [ "$rf_ready" = "true" ]; then
+        local eff_dis="${disablement:-OKAY}"
+        if [ "$eff_dis" = "OKAY" ]; then
             state="CONNECTED"
-        elif [ -n "$disablement" ] && [ "$disablement" != "OKAY" ]; then
-            state="DISABLED ($disablement)"
         else
-            state="UNKNOWN"
+            state="DISABLED ($eff_dis)"
         fi
     fi
 
@@ -182,7 +187,7 @@ query_dish_status() {
     printf ',"fraction_obstructed":%s'  "${obst:-0}"
     printf ',"downlink_bps":%s'         "${downlink:-0}"
     printf ',"uplink_bps":%s'           "${uplink:-0}"
-    printf ',"snr_above_noise":"%s"'    "${snr_bool:-false}"
+    printf ',"snr_above_noise":"%s"'    "${snr_bool:-unknown}"
     printf ',"eth_speed_mbps":%s'       "${eth_speed:-0}"
     printf ',"gps_sats":%s'             "${gps_sats:-0}"
     printf ',"elevation_deg":%s'              "${elevation:-0}"
@@ -226,7 +231,7 @@ get_system_status() {
     delegated=$(get_delegated_prefix)
 
     wan_stats=$(get_iface_stats "$wan_dev")
-    lan_stats=$(get_iface_stats "br-lan")
+    lan_stats=$(get_iface_stats "$(get_lan_dev)")
 
     ct_count=$(get_conntrack_count)
     ct_max=$(get_conntrack_max)
@@ -447,7 +452,7 @@ get_devices() {
 
     printf '{"devices":['
 
-    ip neigh show dev br-lan 2>/dev/null | \
+    ip neigh show dev "$(get_lan_dev)" 2>/dev/null | \
     awk -v leases="$leases_file" '
     BEGIN {
         first = 1
