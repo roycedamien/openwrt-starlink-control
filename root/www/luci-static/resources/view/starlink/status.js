@@ -862,7 +862,10 @@ function buildDNSCard(s) {
 	var modeKeys = ['default', 'starlink', 'family', 'malware', 'custom'];
 	for (var mi = 0; mi < modeKeys.length; mi++) {
 		var mk = modeKeys[mi];
-		body += '<option value="' + mk + '"' + (dnsMode === mk ? ' selected' : '') + '>' +
+		// 'custom' is read-only: disable it when not currently active so it
+		// can't be selected from another mode (it would be a no-op anyway).
+		var disabled = (mk === 'custom' && dnsMode !== 'custom') ? ' disabled' : '';
+		body += '<option value="' + mk + '"' + (dnsMode === mk ? ' selected' : '') + disabled + '>' +
 			dnsModeLabels[mk] + '</option>';
 	}
 	body += '</select>';
@@ -1051,11 +1054,6 @@ window.starlinkApplyConfig = function(btn) {
 window.starlinkSetDnsMode = function(sel) {
 	var mode = sel.value;
 	var prev = sel.getAttribute('data-prev') || mode;
-	// 'custom' is read-only — revert and let the note explain
-	if (mode === 'custom') {
-		sel.value = prev;
-		return;
-	}
 	sel.disabled = true;
 	sel.setAttribute('data-prev', mode);
 	var calls = {
