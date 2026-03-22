@@ -826,20 +826,25 @@ function buildDNSCard(s) {
 	}
 
 	// DNS mode dropdown
+	// Check DNS server content first — a non-preset static DNS means custom
+	// regardless of whether peerdns is also on. Only fall through to peerdns
+	// check when no static DNS is configured or it matches a known preset.
 	var wan_dns = s.wan_dns || '';
 	var dnsMode;
-	if (s.wan_peerdns !== '0') {
-		dnsMode = 'starlink';
-	} else if (wan_dns.indexOf('1.1.1.3') !== -1) {
+	if (wan_dns.indexOf('1.1.1.3') !== -1) {
 		dnsMode = 'family';
 	} else if (wan_dns.indexOf('1.1.1.2') !== -1) {
 		dnsMode = 'malware';
-	} else if (wan_dns.indexOf('1.1.1.1') !== -1 || wan_dns === '') {
-		// Matches CF+Google default set, or no static DNS configured yet
+	} else if (wan_dns.indexOf('1.1.1.1') !== -1) {
 		dnsMode = 'default';
-	} else {
-		// peerdns=0 with servers that don't match any known preset
+	} else if (wan_dns !== '') {
+		// Non-empty static DNS that doesn't match any known preset = custom,
+		// regardless of whether peerdns is also on
 		dnsMode = 'custom';
+	} else if (s.wan_peerdns !== '0') {
+		dnsMode = 'starlink';
+	} else {
+		dnsMode = 'default';
 	}
 
 	var dnsModeLabels = {
