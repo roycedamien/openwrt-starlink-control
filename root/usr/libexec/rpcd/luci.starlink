@@ -467,14 +467,25 @@ get_router_stats() {
 }
 
 # ── connected devices ────────────────────────────────────────────────────────
-# Uses ip neigh (ARP) on br-lan, enriched with hostnames from DHCP leases.
+# Uses ip neigh (ARP) on all bridge interfaces, enriched with hostnames from
+# DHCP leases.  Enumerating all bridges covers VLAN/guest-network setups where
+# clients live on br-iot, br-guest, etc. in addition to br-lan.
 
 get_devices() {
     local leases_file="/tmp/dhcp.leases"
 
+    # Collect all bridge interfaces; fall back to lan dev if ip doesn't support type filter
+    local _br_devs
+    _br_devs=$(ip -br link show type bridge 2>/dev/null | awk '{print $1}')
+    [ -z "$_br_devs" ] && _br_devs="$(get_lan_dev)"
+
     printf '{"devices":['
 
-    ip neigh show dev "$(get_lan_dev)" 2>/dev/null | \
+    {
+        for _dev in $_br_devs; do
+            ip neigh show dev "$_dev" 2>/dev/null
+        done
+    } | \
     awk -v leases="$leases_file" '
     BEGIN {
         first = 1

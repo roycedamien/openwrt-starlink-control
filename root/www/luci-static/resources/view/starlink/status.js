@@ -524,7 +524,7 @@ function svgGauge(pct, label, sublabel) {
 	var circ = 2 * Math.PI * r;
 	var arc  = Math.min(Math.max(pct, 0), 100) / 100 * circ;
 	var color = pct > 85 ? 'var(--sl-red)' : pct > 65 ? 'var(--sl-yellow)' : 'var(--sl-green)';
-	return '<svg viewBox="0 0 100 100" style="width:130px;height:130px;display:block">' +
+	return '<svg viewBox="0 0 100 100" style="width:130px;height:130px;display:block;clip-path:circle(50%)">' +
 		'<circle cx="50" cy="50" r="' + r + '" style="fill:none;stroke:var(--sl-stripe)" stroke-width="12"/>' +
 		'<circle cx="50" cy="50" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="12"' +
 		' stroke-dasharray="' + arc.toFixed(2) + ' ' + circ.toFixed(2) + '"' +
@@ -618,12 +618,12 @@ function buildRouterStatsCard(rs, s) {
 
 	// ── SVG gauges ──────────────────────────────────────────────────────────
 	body += '<div style="display:flex;justify-content:space-around;align-items:center;padding:4px 0 10px">';
-	body += svgGauge(memUsedPct, 'Memory', fmtKB(memUsed) + ' / ' + fmtKB(memTotal));
-	body += svgGauge(cpuPct,     'CPU Load', load1.toFixed(2) + ' (' + numCpu + '\u00a0core' + (numCpu > 1 ? 's' : '') + ')');
+	body += svgGauge(memUsedPct, 'Memory');
+	body += svgGauge(cpuPct,     'CPU Load');
 	body += '</div>';
 
 	// ── Memory stacked bar ──────────────────────────────────────────────────
-	body += '<div style="font-size:0.78em;color:var(--sl-muted);margin-bottom:4px;letter-spacing:.03em">MEMORY BREAKDOWN</div>';
+	body += '<div style="margin-top:4px;font-size:0.78em;color:var(--sl-muted);text-transform:uppercase;letter-spacing:.05em;padding:4px 0 2px">Memory Breakdown</div>';
 	body += '<div style="height:8px;background:var(--sl-stripe);border-radius:4px;overflow:hidden;margin-bottom:6px">' +
 		'<div style="display:flex;height:100%">' +
 		'<div style="width:' + memUsedPct.toFixed(1) + '%;background:var(--sl-green);transition:width .6s ease"></div>' +
@@ -642,7 +642,7 @@ function buildRouterStatsCard(rs, s) {
 	}
 
 	// ── Load average bars ───────────────────────────────────────────────────
-	body += '<div style="font-size:0.78em;color:var(--sl-muted);margin-bottom:4px;letter-spacing:.03em">LOAD AVERAGE</div>';
+	body += '<div style="margin-top:8px;font-size:0.78em;color:var(--sl-muted);text-transform:uppercase;letter-spacing:.05em;padding:4px 0 2px">Load Average</div>';
 	body += loadBar(load1,  numCpu, '1\u00a0min');
 	body += loadBar(load5,  numCpu, '5\u00a0min');
 	body += loadBar(load15, numCpu, '15\u00a0min');
