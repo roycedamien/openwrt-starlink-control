@@ -192,7 +192,7 @@ function alertRow(label, value, isAlert) {
 
 var CSS = '<style>' +
 ':root{--sl-surface:rgba(0,0,0,0.04);--sl-border:rgba(0,0,0,0.12);--sl-text:#24292f;--sl-muted:#57606a;--sl-accent:#0969da;--sl-green:#1a7f37;--sl-yellow:#9a6700;--sl-red:#cf222e;--sl-stripe:rgba(0,0,0,0.07);--sl-inset:rgba(0,0,0,0.05);--sl-warn-bg:rgba(207,34,46,0.08)}' +
-'@media (prefers-color-scheme:dark){:root{--sl-surface:#161b22;--sl-border:#30363d;--sl-text:#c9d1d9;--sl-muted:#8b949e;--sl-accent:#58a6ff;--sl-green:#3fb950;--sl-yellow:#d29922;--sl-red:#f85149;--sl-stripe:#21262d;--sl-inset:#1c2128;--sl-warn-bg:#2d1215}}' +
+'.sl-dark{--sl-surface:#161b22;--sl-border:#30363d;--sl-text:#c9d1d9;--sl-muted:#8b949e;--sl-accent:#58a6ff;--sl-green:#3fb950;--sl-yellow:#d29922;--sl-red:#f85149;--sl-stripe:#21262d;--sl-inset:#1c2128;--sl-warn-bg:#2d1215}' +
 '.sl-wrap{padding:20px;border-radius:8px;min-height:400px}' +
 '.sl-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--sl-border)}' +
 '.sl-title{font-size:1.3em;font-weight:700;color:var(--sl-accent);display:flex;align-items:center;gap:8px}' +
@@ -1184,5 +1184,16 @@ return view.extend({
 
 		html += '</div>';
 		container.innerHTML = html;
+
+		// Apply dark/light theme based on the page background (adapts to any LuCI theme)
+		var wrap = container.querySelector('.sl-wrap');
+		if (wrap) {
+			var bg = window.getComputedStyle(document.body).backgroundColor;
+			var m  = bg.match(/\d+/g);
+			var dark = m && m.length >= 3
+				? (0.299 * +m[0] + 0.587 * +m[1] + 0.114 * +m[2]) < 128
+				: window.matchMedia('(prefers-color-scheme:dark)').matches;
+			if (dark) wrap.classList.add('sl-dark');
+		}
 	}
 });
